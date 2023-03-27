@@ -46,18 +46,23 @@ void SequencePoolingCPU(
   const int sequence_length_for_split,
   const float* input,
   const int64_t* sentence_lengthes,
-  float* output) {
+  float* output,
+  int64_t* inclusive_len_prefix_sum) {
+  constexpr int NumOutputSentences = 256;
 
   for (int batch_id = 0; batch_id < batch_size; ++batch_id) {
     int64_t past_sentence_length_sum = 0;
-    for (int sequence_id = 0; sequence_id < num_sequences; ++sequence_id) {
-        const std::ptrdiff_t input_offset(batch_id * sequence_length_for_split * hidden_size + past_sentence_length_sum * hidden_size);
-        const std::ptrdiff_t output_offset(batch_id * num_sequences * hidden_size + sequence_id * hidden_size);
+    for (int sequence_id = 0; sequence_id < NumOutputSentences; ++sequence_id) {
+        const ptrdiff_t input_offset(batch_id * sequence_length_for_split * hidden_size + past_sentence_length_sum * hidden_size);
+        const ptrdiff_t output_offset(batch_id * NumOutputSentences * hidden_size + sequence_id * hidden_size);
 
-        int64_t sentence_length = sentence_lengthes[batch_id * num_sequences + sequence_id];
+        int64_t sentence_length = ((sequence_id < num_sequences) ? sentence_lengthes[batch_id * num_sequences + sequence_id] : 0LL);
         MaxPoolingByRow<float>(output + output_offset, input + input_offset, sentence_length, hidden_size);
 
         past_sentence_length_sum += sentence_length;
+        if (inclusive_len_prefix_sum) {
+          inclusive_len_prefix_sum[batch_id * num_sequences + sequence_id] = past_sentence_length_sum;
+        }
     }
   }
       

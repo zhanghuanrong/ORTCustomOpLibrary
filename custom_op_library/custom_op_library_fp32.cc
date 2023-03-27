@@ -64,18 +64,22 @@ struct SequencePoolingKernel {
     int num_sequences = static_cast<int>(senlens_dim[1]);
     int sequence_length_for_split = static_cast<int>(input_dim[1]);
 
-    if (num_sequences != 256) {
-      throw std::invalid_argument( "sen_lens needs padding to 256" );
+    if (num_sequences > 256) {
+      throw std::invalid_argument( "sen_lens can not greater than 256" );
     }
 
     std::vector<int64_t> output_dims = input_dim;
     output_dims[1] = 256;
-
     OrtValue* output = ort_.KernelContext_GetOutput(context, 0, output_dims.data(), output_dims.size());
     float* output_data = ort_.GetTensorMutableData<float>(output);
-
     OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
+    int64_t prefix_sum_dims[2] = {batch_size, 256};
+    OrtValue* len_prefix_sum = ort_.KernelContext_GetOutput(context, 1, &(prefix_sum_dims[0]), 2);
+    int64_t* len_prefix_sum_data = ort_.GetTensorMutableData<int64_t>(len_prefix_sum);
+    OrtTensorTypeAndShapeInfo* prefix_sum_info = ort_.GetTensorTypeAndShape(len_prefix_sum);
+    ort_.ReleaseTensorTypeAndShapeInfo(prefix_sum_info);
 
     cudaStream_t stream = reinterpret_cast<cudaStream_t>(ort_.KernelContext_GetGPUComputeStream(context));
 
@@ -86,7 +90,8 @@ struct SequencePoolingKernel {
                         sequence_length_for_split,
                         input_data,
                         senlens_data,
-                        output_data);
+                        output_data,
+                        len_prefix_sum_data);
   }
 
  private:
@@ -104,15 +109,20 @@ struct SequencePooling : Ort::CustomOpBase<SequencePooling, SequencePoolingKerne
   const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
 
   size_t GetInputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetInputType(size_t /*index*/index) const {
+  ONNXTensorElementDataType GetInputType(size_t index) const {
     if (index == 0) {
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
     }
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
   };
 
-  size_t GetOutputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+  size_t GetOutputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetOutputType(size_t index) const {
+    if (index == 0) {
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    }
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  };
 
 } c_SequencePooling;
 

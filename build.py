@@ -34,7 +34,7 @@ class BuildHelper():
         cmake_path = self.resolve_executable_path("cmake")
 
         subprocess.run([cmake_path, ".."], cwd=self.BUILD_DIR)
-        subprocess.run([cmake_path, "--build", "."], cwd=self.BUILD_DIR)
+        subprocess.run([cmake_path, "--build", ".", "--config", "Release"], cwd=self.BUILD_DIR)
 
     def make_directory(self, *paths):
         [Path(path).mkdir(parents=True, exist_ok=True) for path in paths]
